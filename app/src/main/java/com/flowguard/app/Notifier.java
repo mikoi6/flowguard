@@ -20,6 +20,8 @@ public final class Notifier {
 
     private static final int ID_THRESHOLD = 1001;
     private static final int ID_SPEED = 1002;
+    /** 单 App 超限用 2000 + uid 的低位，避免和上面两个撞号 */
+    private static final int ID_APP_LIMIT = 2000;
 
     private Notifier() { }
 
@@ -51,6 +53,15 @@ public final class Notifier {
         String text = "过去 " + minutes + " 分钟用了 " + Fmt.bytes(delta)
                 + "，约 " + String.format(Locale.CHINA, "%.0f", mbPerMin) + " MB/分钟";
         send(c, ID_SPEED, title, text);
+    }
+
+    /** 单个 App 超过用户设定的额度 */
+    public static void appLimit(Context c, int uid, String label, long used, long limit, boolean daily) {
+        String name = label == null || label.isEmpty() ? "某个应用" : label;
+        String title = name + (daily ? " 今天用超了" : " 本周期用超了");
+        String text = (daily ? "今日已用 " : "本周期已用 ") + Fmt.bytes(used)
+                + "，超过你设的 " + Fmt.bytes(limit);
+        send(c, ID_APP_LIMIT + (uid & 0xFFF), title, text);
     }
 
     private static void send(Context c, int id, String title, String body) {

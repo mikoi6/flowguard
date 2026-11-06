@@ -12,5 +12,6 @@
     <color name="ok">#12B76A</color>
     <color name="warn">#F79009</color>
     <color name="danger">#F04438</color>
+    <color name="icon">#344054</color>
     <color name="ic_launcher_background">#2F6FED</color>
 </resources>

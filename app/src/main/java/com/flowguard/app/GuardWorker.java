@@ -6,6 +6,8 @@ import androidx.annotation.NonNull;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+import java.util.Map;
+
 /**
  * 后台每 15 分钟跑一次（WorkManager 的最小周期），做两件事：
  * 1) 用「本次总量 - 上次总量」除以真实经过的分钟数，算出速度，判断是否超速
@@ -43,6 +45,7 @@ public class GuardWorker extends Worker {
 
         checkSpeed(ctx, alert, period, total, now);
         checkThreshold(ctx, plan, alert, period, total, now);
+        checkAppLimits(ctx, new AppLimitPrefs(ctx), period, now);
         return Result.success();
     }
 
@@ -95,6 +98,59 @@ public class GuardWorker extends Worker {
         if (ratio >= 1.0 && !alert.wasAlerted(period.start, 100)) {
             Notifier.threshold(ctx, total, planBytes, usedPct, daysLeft, 0L);
             alert.markAlerted(period.start, 100);
+        }
+    }
+
+    /**
+     * 逐个检查用户给单个 App 设的上限。
+     *
+     * 无论设了多少个 App，都只需要两次查询：一次拿「今天」各 uid 的用量，
+     * 一次拿「本周期」各 uid 的用量（querySummary 一次就返回所有 uid 的桶）。
+     * 没设任何限额时直接返回，不产生额外开销。
+     */
+    private void checkAppLimits(Context ctx, AppLimitPrefs limits, Period period, long now) {
+        Map<Integer, long[]> configured = limits.limits();
+        if (configured.isEmpty()) return;
+
+        TrafficRepo repo = new TrafficRepo(ctx);
+        if (!repo.hasUsageAccess()) return;
+
+        int todayIdx = period.dayIndex(now);
+        if (todayIdx < 1) return;
+        long dayStart = period.dayStart(todayIdx - 1);
+
+        Map<Integer, Long> today;
+        Map<Integer, Long> cycle;
+        try {
+            today = repo.uidTotals(dayStart, now);
+            cycle = repo.uidTotals(period.start, now);
+        } catch (Exception e) {
+            return;
+        }
+
+        for (Map.Entry<Integer, long[]> en : configured.entrySet()) {
+            int uid = en.getKey();
+            long dailyLimit = en.getValue()[0];
+            long cycleLimit = en.getValue()[1];
+            if (dailyLimit <= 0 && cycleLimit <= 0) continue;
+
+            String label = limits.labelOf(uid);
+            if (label == null || label.isEmpty()) label = repo.identForUid(uid).label;
+
+            if (dailyLimit > 0) {
+                long used = today.containsKey(uid) ? today.get(uid) : 0L;
+                if (used >= dailyLimit && !limits.alertedDaily(uid, dayStart)) {
+                    Notifier.appLimit(ctx, uid, label, used, dailyLimit, true);
+                    limits.markAlertedDaily(uid, dayStart);
+                }
+            }
+            if (cycleLimit > 0) {
+                long used = cycle.containsKey(uid) ? cycle.get(uid) : 0L;
+                if (used >= cycleLimit && !limits.alertedCycle(uid, period.start)) {
+                    Notifier.appLimit(ctx, uid, label, used, cycleLimit, false);
+                    limits.markAlertedCycle(uid, period.start);
+                }
+            }
         }
     }
 }

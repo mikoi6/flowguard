@@ -10,6 +10,14 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Android 13+ 发通知需要运行时授权 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      关键：Android 11+ 的包可见性限制会让 getPackagesForUid() 对「不可见」的包返回 null，
+      表现就是流量排行里只能看到 "系统进程 (UID 10316)" 而看不到应用名。
+      本应用需要把 uid 映射成应用名，只能声明这个权限（自用侧载，不上架，无合规问题）。
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:allowBackup="true"

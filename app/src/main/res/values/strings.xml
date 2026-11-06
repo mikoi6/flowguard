@@ -14,4 +14,8 @@
     <string name="perm_desc">Android 出于隐私保护，读取流量明细必须由你手动授权。点击前往设置，找到「流量哨兵」并打开开关。</string>
     <string name="perm_action">去授权</string>
     <string name="granted">已授权</string>
+    <string name="theme_toggle">切换白天 / 夜间</string>
+    <string name="apps_expand">展开全部 %1$d 个应用</string>
+    <string name="apps_collapse">收起</string>
+    <string name="app_limit_title">单 App 限流</string>
 </resources>

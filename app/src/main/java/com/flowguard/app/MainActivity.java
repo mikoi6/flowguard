@@ -36,11 +36,15 @@ import java.util.concurrent.Executors;
 public class MainActivity extends AppCompatActivity {
 
     private static final int CHART_DAYS = 14;
+    /** 折叠时显示几条 */
     private static final int APP_ROWS = 8;
+    /** 一次最多取多少个 App，展开全部时用 */
+    private static final int APP_FETCH_LIMIT = 200;
     private static final int REQ_NOTIFY = 88;
 
     private PlanPrefs prefs;
     private AlertPrefs alertPrefs;
+    private AppLimitPrefs appLimits;
     private TrafficRepo repo;
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -56,6 +60,12 @@ public class MainActivity extends AppCompatActivity {
     private long[] dayHours;
     private final Map<Long, long[]> dayCache = new HashMap<>();
 
+    // 应用排行
+    private List<TrafficRepo.AppUsage> lastApps;
+    private boolean lastPerm = false;
+    private Map<Integer, Long> todayByUid = new HashMap<>();
+    private boolean appsExpanded = false;
+
     private TextView tvCycle;
     private TextView tvUsedValue;
     private TextView tvPlanHint;
@@ -66,6 +76,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvForecast;
     private TextView tvAdvice;
     private TextView tvAppsEmpty;
+    private TextView tvAppsHint;
+    private TextView btnAppsMore;
     private TextView tvDayTitle;
     private TextView tvDaySummary;
     private TextView tvDayPick;
@@ -75,6 +87,7 @@ public class MainActivity extends AppCompatActivity {
     private View cardPerm;
     private ImageButton btnDayPrev;
     private ImageButton btnDayNext;
+    private ImageButton btnTheme;
     private RingView ringView;
     private BarChartView barChart;
     private BarChartView barDay;
@@ -83,19 +96,25 @@ public class MainActivity extends AppCompatActivity {
         long total;
         long[] daily = new long[0];
         List<TrafficRepo.AppUsage> apps;
+        Map<Integer, Long> todayByUid = new HashMap<>();
         boolean perm;
         String error;
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 必须在 setContentView 之前决定昼夜模式，否则会白闪一下再重建
+        UiPrefs.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         prefs = new PlanPrefs(this);
         alertPrefs = new AlertPrefs(this);
+        appLimits = new AppLimitPrefs(this);
         repo = new TrafficRepo(this);
         bindViews();
         bindActions();
+        updateThemeIcon();
 
         GuardScheduler.ensure(this);
         requestNotificationPermission();
@@ -124,6 +143,8 @@ public class MainActivity extends AppCompatActivity {
         tvForecast = findViewById(R.id.tvForecast);
         tvAdvice = findViewById(R.id.tvAdvice);
         tvAppsEmpty = findViewById(R.id.tvAppsEmpty);
+        tvAppsHint = findViewById(R.id.tvAppsHint);
+        btnAppsMore = findViewById(R.id.btnAppsMore);
         tvDayTitle = findViewById(R.id.tvDayTitle);
         tvDaySummary = findViewById(R.id.tvDaySummary);
         tvDayPick = findViewById(R.id.tvDayPick);
@@ -133,6 +154,7 @@ public class MainActivity extends AppCompatActivity {
         cardPerm = findViewById(R.id.cardPerm);
         btnDayPrev = findViewById(R.id.btnDayPrev);
         btnDayNext = findViewById(R.id.btnDayNext);
+        btnTheme = findViewById(R.id.btnTheme);
         ringView = findViewById(R.id.ringView);
         barChart = findViewById(R.id.barChart);
         barDay = findViewById(R.id.barDay);
@@ -145,12 +167,31 @@ public class MainActivity extends AppCompatActivity {
         settings.setOnClickListener(v -> showSettings());
         findViewById(R.id.btnGrant).setOnClickListener(v -> openUsageAccess());
 
+        // 短按：日间/夜间互切；长按：在「跟随系统 -> 浅色 -> 深色」之间循环
+        btnTheme.setOnClickListener(v -> UiPrefs.toggle(this));
+        btnTheme.setOnLongClickListener(v -> {
+            UiPrefs.cycle(this);
+            return true;
+        });
+
         btnDayPrev.setOnClickListener(v -> loadDay(dayCursor - 1));
         btnDayNext.setOnClickListener(v -> loadDay(dayCursor + 1));
 
         // 点近 14 天图上的某根柱 -> 下方单天明细切到那天
         barChart.setOnBarClick(i -> loadDay(chartBase + i));
         barDay.setOnBarClick(this::onDayBarClick);
+
+        btnAppsMore.setOnClickListener(v -> {
+            appsExpanded = !appsExpanded;
+            renderApps(lastApps, lastPerm);
+        });
+    }
+
+    /** 当前深色就显示太阳（点了回白天），浅色就显示月亮 */
+    private void updateThemeIcon() {
+        btnTheme.setImageResource(UiPrefs.isNight(this)
+                ? R.drawable.ic_theme_light
+                : R.drawable.ic_theme_dark);
     }
 
     // ==================== 取数 ====================
@@ -187,7 +228,12 @@ public class MainActivity extends AppCompatActivity {
             }
 
             s.daily = repo.dailyBytes(period.start, cycleDays);
-            s.apps = repo.perApp(period.start, now, APP_ROWS);
+            s.apps = repo.perApp(period.start, now, APP_FETCH_LIMIT);
+            // 「今日各 App 用量」——设限弹窗里要显示，一次查询就够
+            if (s.perm) {
+                long dayStart = period.dayStart(Math.max(0, period.dayIndex(now) - 1));
+                s.todayByUid = repo.uidTotals(dayStart, now);
+            }
 
             ui.post(() -> {
                 loading = false;
@@ -266,6 +312,7 @@ public class MainActivity extends AppCompatActivity {
             barChart.setData(new long[0], new String[0]);
         }
 
+        todayByUid = s.todayByUid == null ? new HashMap<>() : s.todayByUid;
         renderApps(s.apps, s.perm);
 
         // ---- 单天明细（异步，会自己刷新） ----
@@ -273,19 +320,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void renderApps(List<TrafficRepo.AppUsage> apps, boolean perm) {
+        lastApps = apps;
+        lastPerm = perm;
+
         llApps.removeAllViews();
         if (apps == null || apps.isEmpty()) {
             tvAppsEmpty.setVisibility(View.VISIBLE);
             tvAppsEmpty.setText(perm
                     ? "本周期还没有应用产生移动流量。"
                     : "授权「使用情况访问权限」后，可看到每个 App 用了多少流量。");
+            btnAppsMore.setVisibility(View.GONE);
+            tvAppsHint.setVisibility(View.GONE);
             return;
         }
         tvAppsEmpty.setVisibility(View.GONE);
 
+        Map<Integer, long[]> limits = appLimits.limits();
+        int show = appsExpanded ? apps.size() : Math.min(APP_ROWS, apps.size());
         long top = Math.max(1L, apps.get(0).bytes);
         LayoutInflater inf = LayoutInflater.from(this);
-        for (int i = 0; i < apps.size(); i++) {
+
+        for (int i = 0; i < show; i++) {
             TrafficRepo.AppUsage a = apps.get(i);
             View row = inf.inflate(R.layout.item_app_usage, llApps, false);
             ((TextView) row.findViewById(R.id.tvRank)).setText(String.valueOf(i + 1));
@@ -293,8 +348,142 @@ public class MainActivity extends AppCompatActivity {
             ((TextView) row.findViewById(R.id.tvAppSize)).setText(Fmt.bytes(a.bytes));
             setBar(row.findViewById(R.id.vFill), row.findViewById(R.id.vRest),
                     (float) (a.bytes / (double) top));
+
+            bindLimitLine(row.findViewById(R.id.tvLimit), a, limits);
+
+            // 点一行 -> 给这个 App 设上限
+            if (perm) {
+                row.setOnClickListener(v -> showAppLimit(a));
+            }
             llApps.addView(row);
         }
+
+        // 超过 8 个才需要展开
+        if (apps.size() > APP_ROWS) {
+            btnAppsMore.setVisibility(View.VISIBLE);
+            btnAppsMore.setText(appsExpanded
+                    ? getString(R.string.apps_collapse)
+                    : getString(R.string.apps_expand, apps.size()));
+        } else {
+            btnAppsMore.setVisibility(View.GONE);
+            appsExpanded = false;
+        }
+        tvAppsHint.setVisibility(perm ? View.VISIBLE : View.GONE);
+    }
+
+    /** 排行行里那行小字：显示限额与今日/本周期进度，超了标红 */
+    private void bindLimitLine(TextView tv, TrafficRepo.AppUsage a, Map<Integer, long[]> limits) {
+        long[] lim = limits.get(a.uid);
+        if (lim == null || (lim[0] <= 0 && lim[1] <= 0)) {
+            tv.setVisibility(View.GONE);
+            return;
+        }
+        long dailyLimit = lim[0];
+        long cycleLimit = lim[1];
+        long todayUsed = todayByUid.containsKey(a.uid) ? todayByUid.get(a.uid) : 0L;
+
+        StringBuilder sb = new StringBuilder();
+        boolean exceeded = false;
+        if (dailyLimit > 0) {
+            sb.append("今日 ").append(Fmt.bytes(todayUsed))
+                    .append(" / 限 ").append(Fmt.bytes(dailyLimit));
+            if (todayUsed >= dailyLimit) exceeded = true;
+        }
+        if (cycleLimit > 0) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append("本周期 ").append(Fmt.bytes(a.bytes))
+                    .append(" / 限 ").append(Fmt.bytes(cycleLimit));
+            if (a.bytes >= cycleLimit) exceeded = true;
+        }
+
+        tv.setVisibility(View.VISIBLE);
+        tv.setText(sb.toString());
+        tv.setTextColor(ContextCompat.getColor(this, exceeded ? R.color.danger : R.color.text_tertiary));
+    }
+
+    // ==================== 单 App 限额 ====================
+
+    private void showAppLimit(TrafficRepo.AppUsage a) {
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_app_limit, null);
+        TextView tvApp = v.findViewById(R.id.tvLimitApp);
+        TextView tvUsage = v.findViewById(R.id.tvLimitUsage);
+        final TextInputLayout tilDaily = v.findViewById(R.id.tilDaily);
+        final TextInputLayout tilCycle = v.findViewById(R.id.tilCycle);
+        final TextInputEditText etDaily = v.findViewById(R.id.etDaily);
+        final TextInputEditText etCycle = v.findViewById(R.id.etCycle);
+
+        tvApp.setText(a.label);
+
+        long todayUsed = todayByUid.containsKey(a.uid) ? todayByUid.get(a.uid) : 0L;
+        tvUsage.setText("今日已用 " + Fmt.bytes(todayUsed) + " · 本周期已用 " + Fmt.bytes(a.bytes)
+                + (a.pkg == null ? "" : "\n" + a.pkg));
+
+        long curDaily = appLimits.dailyOf(a.uid);
+        long curCycle = appLimits.cycleOf(a.uid);
+        if (curDaily > 0) {
+            etDaily.setText(String.valueOf(Math.round(curDaily / 1048576.0)));
+        }
+        if (curCycle > 0) {
+            etCycle.setText(String.format(Locale.CHINA, "%.2f", curCycle / (double) PlanPrefs.GB));
+        }
+
+        AlertDialog dlg = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.app_limit_title)
+                .setView(v)
+                .setNegativeButton("取消", null)
+                .setNeutralButton("清除", null)
+                .setPositiveButton("保存", null)
+                .create();
+
+        dlg.setOnShowListener(x -> {
+            // 「清除」只在真的设过限额时才有意义
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(
+                    (curDaily > 0 || curCycle > 0) ? View.VISIBLE : View.GONE);
+
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(b -> {
+                appLimits.clear(a.uid);
+                dlg.dismiss();
+                renderApps(lastApps, lastPerm);
+                Toast.makeText(this, "已清除「" + a.label + "」的上限", Toast.LENGTH_SHORT).show();
+            });
+
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
+                int dailyMb = parseInt(text(etDaily));
+                double cycleGb = parseDouble(text(etCycle));
+
+                boolean ok = true;
+                if (!text(etDaily).isEmpty() && (dailyMb < 0 || dailyMb > 1000000)) {
+                    tilDaily.setError("填 0 ~ 1000000（0 = 不限）");
+                    ok = false;
+                } else {
+                    tilDaily.setError(null);
+                }
+                if (!text(etCycle).isEmpty() && (cycleGb < 0 || cycleGb > 100000)) {
+                    tilCycle.setError("填 0 ~ 100000（0 = 不限）");
+                    ok = false;
+                } else {
+                    tilCycle.setError(null);
+                }
+                if (!ok) return;
+
+                long dailyBytes = dailyMb > 0 ? (long) dailyMb * 1048576L : 0L;
+                long cycleBytes = cycleGb > 0 ? (long) (cycleGb * PlanPrefs.GB) : 0L;
+
+                if (dailyBytes > 0 || cycleBytes > 0) {
+                    appLimits.set(a.uid, a.label, dailyBytes, cycleBytes);
+                } else {
+                    appLimits.clear(a.uid);
+                }
+
+                dlg.dismiss();
+                renderApps(lastApps, lastPerm);
+                // 新设了限额，立刻巡检一次（周期任务最慢要等 15 分钟）
+                GuardScheduler.ensure(MainActivity.this);
+                GuardScheduler.runNow(MainActivity.this);
+            });
+        });
+
+        dlg.show();
     }
 
     // ==================== 单天明细 ====================
@@ -478,6 +667,7 @@ public class MainActivity extends AppCompatActivity {
                     dlg.dismiss();
                     // 阈值改了，让后台任务按新配置立即跑一次
                     GuardScheduler.ensure(MainActivity.this);
+                    GuardScheduler.runNow(MainActivity.this);
                     refresh(true);
                 }));
 

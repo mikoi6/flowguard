@@ -41,12 +41,22 @@
         </LinearLayout>
 
         <ImageButton
+            android:id="@+id/btnTheme"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/theme_toggle"
+            android:src="@drawable/ic_theme_dark"
+            android:tint="@color/icon" />
+
+        <ImageButton
             android:id="@+id/btnRefresh"
             android:layout_width="42dp"
             android:layout_height="42dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/refresh"
-            android:src="@drawable/ic_refresh" />
+            android:src="@drawable/ic_refresh"
+            android:tint="@color/icon" />
 
         <ImageButton
             android:id="@+id/btnSettings"
@@ -54,7 +64,8 @@
             android:layout_height="42dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/settings"
-            android:src="@drawable/ic_settings" />
+            android:src="@drawable/ic_settings"
+            android:tint="@color/icon" />
     </LinearLayout>
 
     <ScrollView
@@ -432,7 +443,8 @@
                             android:layout_height="34dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="前一天"
-                            android:src="@drawable/ic_chevron_left" />
+                            android:src="@drawable/ic_chevron_left"
+                            android:tint="@color/icon" />
 
                         <TextView
                             android:id="@+id/tvDayTitle"
@@ -449,7 +461,8 @@
                             android:layout_height="34dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="后一天"
-                            android:src="@drawable/ic_chevron_right" />
+                            android:src="@drawable/ic_chevron_right"
+                            android:tint="@color/icon" />
                     </LinearLayout>
 
                     <com.flowguard.app.BarChartView
@@ -507,6 +520,29 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/btnAppsMore"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:textColor="@color/brand"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/tvAppsHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="点任意一行，可以给这个 App 单独设每日 / 本周期上限"
+                        android:textColor="@color/text_tertiary"
+                        android:textSize="10sp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/tvAppsEmpty"

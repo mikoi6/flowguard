@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  深色配色。键名和 values/colors.xml 完全对应，系统按 uiMode 自动选用，
+  代码里所有 ContextCompat.getColor(R.color.xxx) 都会拿到这里的值。
+-->
+<resources>
+    <color name="brand">#4C8DFF</color>
+    <color name="brand_dark">#8FB8FF</color>
+    <color name="brand_soft">#1B2A44</color>
+    <color name="page_bg">#0E1116</color>
+    <color name="card_bg">#171B22</color>
+    <color name="text_primary">#E7EAF0</color>
+    <color name="text_secondary">#9BA4B4</color>
+    <color name="text_tertiary">#6E7889</color>
+    <color name="track">#262C38</color>
+    <color name="ok">#32D583</color>
+    <color name="warn">#FDB022</color>
+    <color name="danger">#F97066</color>
+    <color name="icon">#C3CAD6</color>
+</resources>
