@@ -1,0 +1,17 @@
+# Android / Gradle
+*.iml
+.gradle/
+.idea/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk.bak
+*.hprof
+
+# 本机配置（含 SDK 绝对路径，不能提交）
+local.properties
+
+# 系统
+.DS_Store
+Thumbs.db

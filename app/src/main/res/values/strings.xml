@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">流量哨兵</string>
+    <string name="refresh">刷新</string>
+    <string name="settings">套餐设置</string>
+    <string name="used_label">本月已用</string>
+    <string name="remain_label">剩余</string>
+    <string name="today_label">今日已用</string>
+    <string name="daily_label">今日可用额度</string>
+    <string name="days_left_label">本周期剩余</string>
+    <string name="chart_title">近 14 天移动流量</string>
+    <string name="apps_title">应用流量排行</string>
+    <string name="perm_title">需要「使用情况访问权限」</string>
+    <string name="perm_desc">Android 出于隐私保护，读取流量明细必须由你手动授权。点击前往设置，找到「流量哨兵」并打开开关。</string>
+    <string name="perm_action">去授权</string>
+    <string name="granted">已授权</string>
+</resources>
